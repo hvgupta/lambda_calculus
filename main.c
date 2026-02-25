@@ -49,24 +49,24 @@ typedef enum {
     GRP
 } ExprType;
 
-typedef struct Expr;
+struct Expr;
 
 typedef struct
 {
-    const char * arg;
-    Expr body;
+    const char *arg;
+    struct Expr *body;
 } Func;
 
 typedef struct {
-    Expr lhf;
-    Expr rhs;
+    struct Expr *lhf;
+    struct Expr *rhs;
 } Group;
 
 typedef struct {
     ExprType expr_type;
     union
     {
-        const char * var;
+        const char *var;
         Func fun; 
         Group group;
     } content;
@@ -76,6 +76,23 @@ typedef struct {
 print_for_var -> string
 print_for_func -> f",\{arg}." + if arg-> print_arg, if func print_
 */
+ 
+void get_var_repr(const char *var, char *buff, int brack_count){
+    // actually these function would be an internal function, the main entry point of this function will be from print_expr
+    if (var == NULL || buff == NULL){
+        return;
+    }
+    strcat(buff, var);
+
+    if (brack_count > 0){
+        strcat(buff, ")");
+    }
+}
+
+// void get_func_repr(const Func *func, char *buff, int brack_count){
+//
+// }
+
 
 void print_expr(const Expr* expr){
     switch (expr->expr_type)
@@ -86,14 +103,11 @@ void print_expr(const Expr* expr){
     case FUN:
         /*
             while loop, 
-                - wherre I track the '(',
+                - where I track the '(',
                 (expr1 expr2)
         */
         const char* cur_string = "";
 
-
-
-        printf(",\\%s. %s");
         break;
     default:
         printf("this is currently not possible");
