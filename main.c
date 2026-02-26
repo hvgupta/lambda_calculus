@@ -41,15 +41,14 @@ Var
 App
 Fun
 */
-
+struct Expr;
+typedef struct Expr Expr;
 
 typedef enum {
     VAR,
     FUN,
     GRP
 } ExprType;
-
-struct Expr;
 
 typedef struct
 {
@@ -58,11 +57,11 @@ typedef struct
 } Func;
 
 typedef struct {
-    struct Expr *lhf;
+    struct Expr *lhs;
     struct Expr *rhs;
 } Group;
 
-typedef struct {
+struct Expr {
     ExprType expr_type;
     union
     {
@@ -70,7 +69,37 @@ typedef struct {
         Func fun; 
         Group group;
     } content;
-} Expr;
+};
+
+Expr *create_var(const char *var){
+    Expr *var_expr = (Expr *)malloc(sizeof(Expr));
+    var_expr->expr_type = VAR;
+    var_expr->content.var = var;
+
+    return var_expr;
+}  
+
+Expr *create_func(const char *arg, Expr *body){
+    Expr *func_expr = (Expr *)malloc(sizeof(Expr));
+
+    func_expr->expr_type = FUN;
+    
+    func_expr->content.fun.arg = arg;
+    func_expr->content.fun.body = body;
+
+    return func_expr;
+}
+
+Expr *create_grp(Expr *lhs, Expr *rhs){
+    Expr *grp_expr = (Expr *)malloc(sizeof(Expr));
+
+    grp_expr->expr_type = GRP;
+
+    grp_expr->content.group.lhs = lhs;
+    grp_expr->content.group.rhs = rhs;
+
+    return grp_expr;
+}
 
 /*
 print_for_var -> string
@@ -89,9 +118,25 @@ void get_var_repr(const char *var, char *buff, int brack_count){
     }
 }
 
-// void get_func_repr(const Func *func, char *buff, int brack_count){
-//
-// }
+void get_func_repr(const Func *func, char *buff, int brack_count){
+    if (func == NULL || buff == NULL) {
+        return; 
+    }
+    strcat(buff, ",\\");
+    strcat(buff, func->arg);
+    strcat(buff, ".");
+
+    switch (func->body->expr_type){
+    case VAR:
+        get_var_repr(func->body->content.var, buff, brack_count);
+        break;
+    case FUN:
+        get_func_repr(&func->body->content.fun, buff, brack_count);
+        break;
+    case GRP:
+        break;
+    }
+}
 
 
 void print_expr(const Expr* expr){
@@ -117,6 +162,15 @@ void print_expr(const Expr* expr){
 
 
 int main(){
-    printf("hello world\n");
-    printf("this is number %d\n", 10);
+    // Var test
+    Expr *var = create_var("test");
+    char buff[50] = "";
+    get_var_repr(var->content.var, buff, 0);
+    printf("%s\n",buff);
+    
+    // Func test
+    Expr *func = create_func("test", var);
+    char func_buff[50] = "";
+    get_func_repr(&func->content.fun, func_buff, 0);
+    printf("%s\n", func_buff);
 };
