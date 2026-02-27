@@ -105,6 +105,11 @@ Expr *create_grp(Expr *lhs, Expr *rhs){
 print_for_var -> string
 print_for_func -> f",\{arg}." + if arg-> print_arg, if func print_
 */
+
+
+
+void _print_expr(const Expr* expr, char *buff, int brack_count);
+    
  
 void get_var_repr(const char *var, char *buff, int brack_count){
     // actually these function would be an internal function, the main entry point of this function will be from print_expr
@@ -122,28 +127,29 @@ void get_func_repr(const Func *func, char *buff, int brack_count){
     if (func == NULL || buff == NULL) {
         return; 
     }
-    strcat(buff, ",\\");
+    strcat(buff, "λ");
     strcat(buff, func->arg);
     strcat(buff, ".");
 
-    switch (func->body->expr_type){
-    case VAR:
-        get_var_repr(func->body->content.var, buff, brack_count);
-        break;
-    case FUN:
-        get_func_repr(&func->body->content.fun, buff, brack_count);
-        break;
-    case GRP:
-        break;
+    _print_expr(func->body, buff, brack_count);
+}
+
+void get_grp_repr(const Group *grp, char *buff, int brack_count){
+    if (grp == NULL || buff == NULL) {
+        return; 
     }
+    strcat(buff, "(");
+    _print_expr(grp->lhs, buff, brack_count+1); 
+    strcat(buff, "(");
+    _print_expr(grp->rhs, buff, brack_count+1);   
 }
 
 
-void print_expr(const Expr* expr){
+void _print_expr(const Expr* expr, char *buff, int brack_count){
     switch (expr->expr_type)
     {
     case VAR:
-        printf("%s\n", expr->content.var);
+        get_var_repr(expr->content.var, buff, brack_count);
         break;
     case FUN:
         /*
@@ -151,26 +157,40 @@ void print_expr(const Expr* expr){
                 - where I track the '(',
                 (expr1 expr2)
         */
-        const char* cur_string = "";
-
+        get_func_repr(&expr->content.fun, buff, brack_count);
         break;
     default:
-        printf("this is currently not possible");
+        get_grp_repr(&expr->content.group, buff, brack_count+1);
         break;
     }
 }
 
+void print_expr(const Expr *expr, char *buff){
+    _print_expr(expr, buff, 0);
+}
 
 int main(){
     // Var test
     Expr *var = create_var("test");
     char buff[50] = "";
-    get_var_repr(var->content.var, buff, 0);
+    print_expr(var, buff);
     printf("%s\n",buff);
     
     // Func test
     Expr *func = create_func("test", var);
     char func_buff[50] = "";
-    get_func_repr(&func->content.fun, func_buff, 0);
+    print_expr(func, func_buff);
     printf("%s\n", func_buff);
+
+    // Nested Func test
+    Expr *nested_func = create_func("test", func);
+    char nested_func_buff[50] = "";
+    print_expr(nested_func, nested_func_buff);
+    printf("%s\n", nested_func_buff);
+
+    //Group (fails capture I know :sob:)
+    Expr *group_expr = create_grp(nested_func, var);
+    char group_buff[50] = "";
+    print_expr(group_expr, group_buff);
+    printf("%s\n", group_buff);
 };
