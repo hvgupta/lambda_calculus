@@ -117,10 +117,12 @@ void get_var_repr(const char *var, char *buff, int brack_count){
         return;
     }
     strcat(buff, var);
-
-    if (brack_count > 0){
+    
+    while (brack_count > 0){
         strcat(buff, ")");
+        --brack_count;
     }
+        
 }
 
 void get_func_repr(const Func *func, char *buff, int brack_count){
@@ -130,7 +132,6 @@ void get_func_repr(const Func *func, char *buff, int brack_count){
     strcat(buff, "λ");
     strcat(buff, func->arg);
     strcat(buff, ".");
-
     _print_expr(func->body, buff, brack_count);
 }
 
@@ -139,34 +140,75 @@ void get_grp_repr(const Group *grp, char *buff, int brack_count){
         return; 
     }
     strcat(buff, "(");
-    _print_expr(grp->lhs, buff, brack_count+1); 
-    strcat(buff, "(");
-    _print_expr(grp->rhs, buff, brack_count+1);   
+    _print_expr(grp->lhs, buff, 0);
+    strcat(buff, " ");
+    _print_expr(grp->rhs, buff, brack_count+1);
 }
 
 
 void _print_expr(const Expr* expr, char *buff, int brack_count){
+    // This is supposed to be the route of the repr functions
     switch (expr->expr_type)
     {
     case VAR:
         get_var_repr(expr->content.var, buff, brack_count);
         break;
     case FUN:
-        /*
-            while loop, 
-                - where I track the '(',
-                (expr1 expr2)
-        */
         get_func_repr(&expr->content.fun, buff, brack_count);
         break;
-    default:
-        get_grp_repr(&expr->content.group, buff, brack_count+1);
+    case GRP:
+        get_grp_repr(&expr->content.group, buff, brack_count);
         break;
     }
 }
 
 void print_expr(const Expr *expr, char *buff){
     _print_expr(expr, buff, 0);
+}
+
+
+void more_complex_grp_repr(){
+    /* this function only tests repr, not eval
+     *  (λx.(λy.(x y) g))(λx. x x)
+     *
+     * 
+    */
+    Expr *var_x = create_var("x");
+    Expr *var_y = create_var("y");
+    
+    Expr *func_y_body_lhs_grp = create_grp(var_x, var_y);
+    Expr *var_g = create_var("g");
+
+    Expr *func_y_body_grp = create_grp(func_y_body_lhs_grp, var_g);
+    Expr *func_y = create_func("y", func_y_body_grp);
+
+    Expr *func_x = create_func("x", func_y);
+
+    Expr *rhs_grp_func_body_var1 = create_var("x");
+    Expr *rhs_grp_func_body_var2 = create_var("x");
+
+    Expr *rhs_grp_func_body = create_grp(rhs_grp_func_body_var1, rhs_grp_func_body_var2);
+    Expr *rhs_grp_func = create_func("x", rhs_grp_func_body);
+
+    Expr *cmplx_grp = create_grp(func_x, rhs_grp_func);
+
+    char buff[50] = "";
+    print_expr(cmplx_grp, buff);
+
+    printf("%s\n",buff);
+
+    free(cmplx_grp);
+    free(rhs_grp_func);
+    free(rhs_grp_func_body);
+    free(rhs_grp_func_body_var2);
+    free(rhs_grp_func_body_var1);
+    free(func_x);
+    free(func_y);
+    free(func_y_body_grp);
+    free(var_g);
+    free(func_y_body_lhs_grp);
+    free(var_y);
+    free(var_x);
 }
 
 int main(){
@@ -188,9 +230,17 @@ int main(){
     print_expr(nested_func, nested_func_buff);
     printf("%s\n", nested_func_buff);
 
-    //Group (fails capture I know :sob:)
+    //Group
     Expr *group_expr = create_grp(nested_func, var);
     char group_buff[50] = "";
     print_expr(group_expr, group_buff);
     printf("%s\n", group_buff);
+
+    more_complex_grp_repr();
+
+    free(var);
+    free(func);
+    free(nested_func);
+    free(group_expr);
+    //group
 };
