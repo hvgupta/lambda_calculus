@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -52,7 +53,8 @@ typedef enum {
 
 typedef struct
 {
-    const char *arg;
+    struct Expr *arg; // do we want to allow for non-var expr? 
+    // this can be an easy way to reduce the chances of capture cases, we can just check memory addr
     struct Expr *body;
 } Func;
 
@@ -72,6 +74,10 @@ struct Expr {
 };
 
 Expr *create_var(const char *var){
+    if (var == NULL){
+        return NULL;
+    }
+
     Expr *var_expr = (Expr *)malloc(sizeof(Expr));
     var_expr->expr_type = VAR;
     var_expr->content.var = var;
@@ -79,8 +85,16 @@ Expr *create_var(const char *var){
     return var_expr;
 }  
 
-Expr *create_func(const char *arg, Expr *body){
-    Expr *func_expr = (Expr *)malloc(sizeof(Expr));
+Expr *create_func(Expr* arg, Expr *body){
+    if (arg == NULL || body == NULL){
+        return NULL;
+    }
+
+    if (arg->expr_type != VAR){
+        return NULL;
+    }
+
+    Expr *func_expr = (Expr *)malloc(sizeof(Expr)); 
 
     func_expr->expr_type = FUN;
     
@@ -91,6 +105,10 @@ Expr *create_func(const char *arg, Expr *body){
 }
 
 Expr *create_grp(Expr *lhs, Expr *rhs){
+    if (lhs == NULL || rhs == NULL){
+        return NULL;
+    }
+
     Expr *grp_expr = (Expr *)malloc(sizeof(Expr));
 
     grp_expr->expr_type = GRP;
@@ -105,7 +123,53 @@ Expr *create_grp(Expr *lhs, Expr *rhs){
 print_for_var -> string
 print_for_func -> f",\{arg}." + if arg-> print_arg, if func print_
 */
+Expr *eval_expr(Expr *exp);
 
+Expr *eval_func(Expr *func, Expr *var){
+    /* Var -> if var addr matches, then replace, otherwise just return Var 
+     *
+     * 
+     *
+    */
+    return NULL;
+}
+
+Expr *eval_grp_expr(Expr *grp_expr){
+    if (grp_expr == NULL){
+        return NULL;
+    }
+    Expr *lhs = grp_expr->content.group.lhs;
+    Expr *rhs = grp_expr->content.group.rhs;
+
+    if (lhs->expr_type == VAR && rhs->expr_type == VAR){
+        return grp_expr;
+    }
+    if (lhs->expr_type == VAR){
+        Expr *rhs_eval = eval_expr(rhs);
+        return create_grp(lhs, rhs_eval);
+    }
+    if (lhs->expr_type == GRP){
+        Expr *lhs_eval = eval_expr(lhs);
+        Expr *rhs_eval = eval_expr(rhs);
+        Expr *new_grp = create_grp(lhs_eval, rhs_eval);
+        return eval_grp_expr(new_grp);
+    }
+    // this should now be the part where lhs == FUNC
+    return eval_func(lhs, rhs);
+}
+
+Expr *eval_expr(Expr *exp){
+    if (exp == NULL){
+        return NULL;
+    }
+    switch (exp->expr_type) {
+    case VAR:
+    case FUN:
+        return exp; // we are not able to evaluate a variable or function by itself
+    case GRP:
+        return eval_grp_expr(exp);
+    }
+}
 
 
 void _print_expr(const Expr* expr, char *buff, int brack_count);
@@ -130,8 +194,12 @@ void get_func_repr(const Func *func, char *buff, int brack_count){
         return; 
     }
     strcat(buff, "λ");
-    strcat(buff, func->arg);
+    _print_expr(func->arg, buff, 0);
     strcat(buff, ".");
+    if (func->body->expr_type != GRP){
+        strcat(buff, "(");
+        ++brack_count;
+    }
     _print_expr(func->body, buff, brack_count);
 }
 
@@ -180,15 +248,15 @@ void more_complex_grp_repr(){
     Expr *var_g = create_var("g");
 
     Expr *func_y_body_grp = create_grp(func_y_body_lhs_grp, var_g);
-    Expr *func_y = create_func("y", func_y_body_grp);
+    Expr *func_y = create_func(var_y, func_y_body_grp);
 
-    Expr *func_x = create_func("x", func_y);
+    Expr *func_x = create_func(var_x, func_y);
 
     Expr *rhs_grp_func_body_var1 = create_var("x");
     Expr *rhs_grp_func_body_var2 = create_var("x");
 
     Expr *rhs_grp_func_body = create_grp(rhs_grp_func_body_var1, rhs_grp_func_body_var2);
-    Expr *rhs_grp_func = create_func("x", rhs_grp_func_body);
+    Expr *rhs_grp_func = create_func(var_x, rhs_grp_func_body);
 
     Expr *cmplx_grp = create_grp(func_x, rhs_grp_func);
 
@@ -219,13 +287,13 @@ int main(){
     printf("%s\n",buff);
     
     // Func test
-    Expr *func = create_func("test", var);
+    Expr *func = create_func(var, var);
     char func_buff[50] = "";
     print_expr(func, func_buff);
     printf("%s\n", func_buff);
 
     // Nested Func test
-    Expr *nested_func = create_func("test", func);
+    Expr *nested_func = create_func(var, func);
     char nested_func_buff[50] = "";
     print_expr(nested_func, nested_func_buff);
     printf("%s\n", nested_func_buff);
