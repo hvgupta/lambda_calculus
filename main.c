@@ -1,4 +1,4 @@
-#include <errno.h>
+#include <complex.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -118,20 +118,49 @@ Expr *create_grp(Expr *lhs, Expr *rhs){
 
     return grp_expr;
 }
-
+void print_expr(const Expr *expr, char *buff);
 /*
 print_for_var -> string
 print_for_func -> f",\{arg}." + if arg-> print_arg, if func print_
 */
 Expr *eval_expr(Expr *exp);
 
-Expr *eval_func(Expr *func, Expr *var){
+Expr *replace_vars(Expr *body, const Expr *arg_expr , Expr *rplc_expr){
+    switch (body->expr_type) {
+        case VAR:
+            return (body == arg_expr) ? rplc_expr : body;
+        case FUN:
+            break;
+        case GRP:
+            return eval_expr(create_grp(
+                        replace_vars(body->content.group.lhs, arg_expr, rplc_expr),
+                        replace_vars(body->content.group.rhs, arg_expr, rplc_expr)
+                ));
+        }
+    body->content.fun.body = replace_vars(body->content.fun.body, arg_expr, rplc_expr);
+    return body;
+}
+
+Expr *eval_func(Expr *func, Expr *rhs){
     /* Var -> if var addr matches, then replace, otherwise just return Var 
-     *
      * 
-     *
     */
-    return NULL;
+    Expr *func_body = func->content.fun.body;
+
+    const Expr *func_arg = func->content.fun.arg;
+
+    return replace_vars(func_body, func_arg, rhs);
+
+    // switch (rhs->expr_type) {
+    //     case VAR:
+    //     case FUN:
+    //         return replace_vars(func_body, func_arg, rhs);
+    //     case GRP:
+    //         break;
+    // }
+    // Expr *grp_lhs = rhs->content.group.lhs;
+    // Expr *grp_rhs = rhs->content.group.rhs;
+    // return create_grp(replace_vars(func_body, func_arg, grp_lhs), grp_rhs);
 }
 
 Expr *eval_grp_expr(Expr *grp_expr){
@@ -141,21 +170,17 @@ Expr *eval_grp_expr(Expr *grp_expr){
     Expr *lhs = grp_expr->content.group.lhs;
     Expr *rhs = grp_expr->content.group.rhs;
 
-    if (lhs->expr_type == VAR && rhs->expr_type == VAR){
-        return grp_expr;
+    switch (lhs->expr_type) {
+        case VAR:
+            if (rhs->expr_type == VAR){
+                return grp_expr; // just to stop from too much mem being allocated
+            }
+            return create_grp(lhs, eval_expr(rhs));
+        case FUN:
+            return eval_func(lhs, eval_expr(rhs));
+        case GRP:
+            return create_grp(eval_grp_expr(lhs), eval_expr(rhs));
     }
-    if (lhs->expr_type == VAR){
-        Expr *rhs_eval = eval_expr(rhs);
-        return create_grp(lhs, rhs_eval);
-    }
-    if (lhs->expr_type == GRP){
-        Expr *lhs_eval = eval_expr(lhs);
-        Expr *rhs_eval = eval_expr(rhs);
-        Expr *new_grp = create_grp(lhs_eval, rhs_eval);
-        return eval_grp_expr(new_grp);
-    }
-    // this should now be the part where lhs == FUNC
-    return eval_func(lhs, rhs);
 }
 
 Expr *eval_expr(Expr *exp){
@@ -252,24 +277,26 @@ void more_complex_grp_repr(){
 
     Expr *func_x = create_func(var_x, func_y);
 
-    Expr *rhs_grp_func_body_var1 = create_var("x");
-    Expr *rhs_grp_func_body_var2 = create_var("x");
+    Expr *rhs_grp_x = create_var("x");
 
-    Expr *rhs_grp_func_body = create_grp(rhs_grp_func_body_var1, rhs_grp_func_body_var2);
-    Expr *rhs_grp_func = create_func(var_x, rhs_grp_func_body);
+    Expr *rhs_grp_func_body = create_grp(rhs_grp_x, rhs_grp_x);
+    Expr *rhs_grp_func = create_func(rhs_grp_x, rhs_grp_func_body);
 
     Expr *cmplx_grp = create_grp(func_x, rhs_grp_func);
 
     char buff[50] = "";
     print_expr(cmplx_grp, buff);
+    printf("before eval %s\n",buff);
 
-    printf("%s\n",buff);
+    char new_buff[50] = "";
+    Expr *evalled_expr = eval_expr(cmplx_grp);
+    print_expr(evalled_expr, new_buff);
+    printf("after eval %s\n", new_buff);
 
     free(cmplx_grp);
     free(rhs_grp_func);
     free(rhs_grp_func_body);
-    free(rhs_grp_func_body_var2);
-    free(rhs_grp_func_body_var1);
+    free(rhs_grp_x);
     free(func_x);
     free(func_y);
     free(func_y_body_grp);
