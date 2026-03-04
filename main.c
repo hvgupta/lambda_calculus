@@ -141,27 +141,27 @@ Expr *replace_vars(Expr *body, const Expr *arg_expr , Expr *rplc_expr){
     return body;
 }
 
-Expr *eval_func(Expr *func, Expr *rhs){
-    /* Var -> if var addr matches, then replace, otherwise just return Var 
-     * 
-    */
-    Expr *func_body = func->content.fun.body;
-
-    const Expr *func_arg = func->content.fun.arg;
-
-    return replace_vars(func_body, func_arg, rhs);
-
-    // switch (rhs->expr_type) {
-    //     case VAR:
-    //     case FUN:
-    //         return replace_vars(func_body, func_arg, rhs);
-    //     case GRP:
-    //         break;
-    // }
-    // Expr *grp_lhs = rhs->content.group.lhs;
-    // Expr *grp_rhs = rhs->content.group.rhs;
-    // return create_grp(replace_vars(func_body, func_arg, grp_lhs), grp_rhs);
-}
+// Expr *eval_func(Expr *func, Expr *rhs){
+//     /* Var -> if var addr matches, then replace, otherwise just return Var 
+//      * 
+//     */
+//     Expr *func_body = func->content.fun.body;
+//
+//     const Expr *func_arg = func->content.fun.arg;
+//
+//     return replace_vars(func_body, func_arg, rhs);
+//
+//     switch (rhs->expr_type) {
+//         case VAR:
+//         case FUN:
+//             return replace_vars(func_body, func_arg, rhs);
+//         case GRP:
+//             break;
+//     }
+//     Expr *grp_lhs = rhs->content.group.lhs;
+//     Expr *grp_rhs = rhs->content.group.rhs;
+//     return create_grp(replace_vars(func_body, func_arg, grp_lhs), grp_rhs);
+// }
 
 Expr *eval_grp_expr(Expr *grp_expr){
     if (grp_expr == NULL){
@@ -177,7 +177,7 @@ Expr *eval_grp_expr(Expr *grp_expr){
             }
             return create_grp(lhs, eval_expr(rhs));
         case FUN:
-            return eval_func(lhs, eval_expr(rhs));
+            return replace_vars(lhs->content.fun.body, lhs->content.fun.arg, rhs);
         case GRP:
             return create_grp(eval_grp_expr(lhs), eval_expr(rhs));
     }
