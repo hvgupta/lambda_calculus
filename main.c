@@ -41,8 +41,45 @@ Var
 App
 Fun
 */
+
+
+
 struct Expr;
 typedef struct Expr Expr;
+
+
+typedef struct{
+    Expr const **list_of_expr;
+    int cur_size;
+    int size;
+} GC;
+
+GC *gc = NULL;
+
+void insert_into_gc(Expr const * expr){
+    if (gc == NULL){
+        gc = (GC *)malloc(sizeof(GC));
+        gc->list_of_expr = (Expr const **)malloc(sizeof(Expr const *)*8);
+        gc->cur_size = 0;
+        gc->size = 8;
+    } else if (gc->cur_size == gc->size){
+        gc->list_of_expr = (Expr const **)realloc((void *)gc->list_of_expr, gc->size*2*sizeof(Expr const *));
+        gc->size *= 2;
+    }
+    gc->list_of_expr[gc->cur_size++] = expr;
+}
+
+void free_all(){
+    if (gc == NULL){
+        return;
+    }
+    for (int i = 0; i < gc->cur_size; i++){
+        free((void *)gc->list_of_expr[i]);
+    }
+    free(gc->list_of_expr);
+    free(gc);
+}
+
 
 typedef enum {
     VAR,
@@ -52,14 +89,14 @@ typedef enum {
 
 typedef struct
 {
-    struct Expr *arg; // do we want to allow for non-var expr? 
+    Expr const *arg; // do we want to allow for non-var expr? 
     // this can be an easy way to reduce the chances of capture cases, we can just check memory addr
-    struct Expr *body;
+    Expr const *body;
 } Func;
 
 typedef struct {
-    struct Expr *lhs;
-    struct Expr *rhs;
+    Expr const *lhs;
+    Expr const *rhs;
 } Group;
 
 struct Expr {
@@ -72,7 +109,7 @@ struct Expr {
     } content;
 };
 
-Expr *create_var(const char *var){
+Expr const *const create_var(const char *var){
     if (var == NULL){
         return NULL;
     }
@@ -81,10 +118,12 @@ Expr *create_var(const char *var){
     var_expr->expr_type = VAR;
     var_expr->content.var = var;
 
+    insert_into_gc(var_expr);
+
     return var_expr;
 }  
 
-Expr *create_func(Expr* arg, Expr *body){
+Expr const *const create_func(Expr const *arg, Expr const *body){
     if (arg == NULL || body == NULL){
         return NULL;
     }
@@ -100,10 +139,12 @@ Expr *create_func(Expr* arg, Expr *body){
     func_expr->content.fun.arg = arg;
     func_expr->content.fun.body = body;
 
+    insert_into_gc(func_expr);
+
     return func_expr;
 }
 
-Expr *create_grp(Expr *lhs, Expr *rhs){
+Expr const *const create_grp(Expr const *const lhs, Expr const *const rhs){
     if (lhs == NULL || rhs == NULL){
         return NULL;
     }
@@ -114,6 +155,8 @@ Expr *create_grp(Expr *lhs, Expr *rhs){
 
     grp_expr->content.group.lhs = lhs;
     grp_expr->content.group.rhs = rhs;
+
+    insert_into_gc(grp_expr);
 
     return grp_expr;
 }
@@ -259,23 +302,23 @@ void more_complex_grp_repr(){
      *
      * 
     */
-    Expr *var_x = create_var("x");
-    Expr *var_y = create_var("y");
+    Expr const *const var_x = create_var("x");
+    Expr const *const var_y = create_var("y");
     
-    Expr *func_y_body_lhs_grp = create_grp(var_x, var_y);
-    Expr *var_g = create_var("g");
+    Expr const *const func_y_body_lhs_grp = create_grp(var_x, var_y);
+    Expr const *const var_g = create_var("g");
 
-    Expr *func_y_body_grp = create_grp(func_y_body_lhs_grp, var_g);
-    Expr *func_y = create_func(var_y, func_y_body_grp);
+    Expr const *const func_y_body_grp = create_grp(func_y_body_lhs_grp, var_g);
+    Expr const *const func_y = create_func(var_y, func_y_body_grp);
 
-    Expr *func_x = create_func(var_x, func_y);
+    Expr const *const func_x = create_func(var_x, func_y);
 
-    Expr *rhs_grp_x = create_var("x");
+    Expr const *const rhs_grp_x = create_var("x");
 
-    Expr *rhs_grp_func_body = create_grp(rhs_grp_x, rhs_grp_x);
-    Expr *rhs_grp_func = create_func(rhs_grp_x, rhs_grp_func_body);
+    Expr const *const rhs_grp_func_body = create_grp(rhs_grp_x, rhs_grp_x);
+    Expr const *const rhs_grp_func = create_func(rhs_grp_x, rhs_grp_func_body);
 
-    Expr *cmplx_grp = create_grp(func_x, rhs_grp_func);
+    Expr const *const cmplx_grp = create_grp(func_x, rhs_grp_func);
 
     char buff[50] = "";
     print_expr(cmplx_grp, buff);
@@ -286,26 +329,15 @@ void more_complex_grp_repr(){
     print_expr(evalled_expr, new_buff);
     printf("after eval %s\n", new_buff);
 
-    free(cmplx_grp);
-    free(rhs_grp_func);
-    free(rhs_grp_func_body);
-    free(rhs_grp_x);
-    free(func_x);
-    free(func_y);
-    free(func_y_body_grp);
-    free(var_g);
-    free(func_y_body_lhs_grp);
-    free(var_y);
-    free(var_x);
 }
 
 void test_inf(){
-    Expr *x = create_var("x");
-    Expr *grp_x = create_grp(x, x);
-    Expr *func_grp_x = create_func(x, grp_x);
+    Expr const *const x = create_var("x");
+    Expr const *const grp_x = create_grp(x, x);
+    Expr const *const func_grp_x = create_func(x, grp_x);
 
-    Expr *grp_func_grp_x = create_grp(func_grp_x, func_grp_x);
-    Expr *output = eval_expr(grp_func_grp_x);
+    Expr const *const grp_func_grp_x = create_grp(func_grp_x, func_grp_x);
+    Expr const *const output = eval_expr(grp_func_grp_x);
     char local_buff[50] = "";
     print_expr(output, local_buff);
     printf("%s\n", local_buff);
@@ -313,25 +345,25 @@ void test_inf(){
 
 int main(){
     // Var test
-    Expr *var = create_var("test");
+    Expr const *const var = create_var("test");
     char buff[50] = "";
     print_expr(var, buff);
     printf("%s\n",buff);
     
     // Func test
-    Expr *func = create_func(var, var);
+    Expr const *const func = create_func(var, var);
     char func_buff[50] = "";
     print_expr(func, func_buff);
     printf("%s\n", func_buff);
 
     // Nested Func test
-    Expr *nested_func = create_func(var, func);
+    Expr const *const nested_func = create_func(var, func);
     char nested_func_buff[50] = "";
     print_expr(nested_func, nested_func_buff);
     printf("%s\n", nested_func_buff);
 
     //Group
-    Expr *group_expr = create_grp(nested_func, var);
+    Expr const *const group_expr = create_grp(nested_func, var);
     char group_buff[50] = "";
     print_expr(group_expr, group_buff);
     printf("%s\n", group_buff);
@@ -339,9 +371,7 @@ int main(){
     more_complex_grp_repr();
     test_inf();
 
-    free(var);
-    free(func);
-    free(nested_func);
-    free(group_expr);
     //group
+    //
+    free_all();
 };
