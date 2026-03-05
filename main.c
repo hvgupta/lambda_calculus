@@ -1,4 +1,3 @@
-#include <complex.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -126,42 +125,21 @@ print_for_func -> f",\{arg}." + if arg-> print_arg, if func print_
 Expr *eval_expr(Expr *exp);
 
 Expr *replace_vars(Expr *body, const Expr *arg_expr , Expr *rplc_expr){
-    switch (body->expr_type) {
-        case VAR:
-            return (body == arg_expr) ? rplc_expr : body;
-        case FUN:
-            break;
-        case GRP:
-            return eval_expr(create_grp(
-                        replace_vars(body->content.group.lhs, arg_expr, rplc_expr),
-                        replace_vars(body->content.group.rhs, arg_expr, rplc_expr)
-                ));
-        }
-    body->content.fun.body = replace_vars(body->content.fun.body, arg_expr, rplc_expr);
-    return body;
+    
+    if (body->expr_type == VAR){
+        return (body == arg_expr) ? rplc_expr : body;
+    } else if (body->expr_type == FUN){
+        body->content.fun.body = replace_vars(body->content.fun.body, arg_expr, rplc_expr);
+        return body;
+    } else if (body->expr_type == GRP){
+        body->content.group.lhs = replace_vars(body->content.group.lhs, arg_expr, rplc_expr);
+        body->content.group.rhs = replace_vars(body->content.group.rhs, arg_expr, rplc_expr);
+        return eval_expr(body);
+    }
+    
+    return NULL;
 }
 
-// Expr *eval_func(Expr *func, Expr *rhs){
-//     /* Var -> if var addr matches, then replace, otherwise just return Var 
-//      * 
-//     */
-//     Expr *func_body = func->content.fun.body;
-//
-//     const Expr *func_arg = func->content.fun.arg;
-//
-//     return replace_vars(func_body, func_arg, rhs);
-//
-//     switch (rhs->expr_type) {
-//         case VAR:
-//         case FUN:
-//             return replace_vars(func_body, func_arg, rhs);
-//         case GRP:
-//             break;
-//     }
-//     Expr *grp_lhs = rhs->content.group.lhs;
-//     Expr *grp_rhs = rhs->content.group.rhs;
-//     return create_grp(replace_vars(func_body, func_arg, grp_lhs), grp_rhs);
-// }
 
 Expr *eval_grp_expr(Expr *grp_expr){
     if (grp_expr == NULL){
@@ -170,17 +148,31 @@ Expr *eval_grp_expr(Expr *grp_expr){
     Expr *lhs = grp_expr->content.group.lhs;
     Expr *rhs = grp_expr->content.group.rhs;
 
-    switch (lhs->expr_type) {
-        case VAR:
-            if (rhs->expr_type == VAR){
-                return grp_expr; // just to stop from too much mem being allocated
-            }
-            return create_grp(lhs, eval_expr(rhs));
-        case FUN:
-            return replace_vars(lhs->content.fun.body, lhs->content.fun.arg, rhs);
-        case GRP:
-            return create_grp(eval_grp_expr(lhs), eval_expr(rhs));
+    if (lhs->expr_type == VAR){
+        if (rhs->expr_type == VAR){
+            return grp_expr; // just to stop from too much mem being allocated
+        }
+        grp_expr->content.group.rhs = eval_expr(rhs);
+        return grp_expr;
+    } else if (lhs->expr_type == FUN){
+        Expr *func_body = lhs->content.fun.body;
+        lhs->content.fun.body = NULL;
+
+        Expr *func_arg = lhs->content.fun.arg;
+        lhs->content.fun.arg = NULL;
+        free(lhs);
+
+        return replace_vars(func_body, func_arg, eval_expr(rhs));
+    } else if (lhs->expr_type == GRP){
+        return create_grp(eval_grp_expr(lhs), eval_expr(rhs));
     }
+    
+    return NULL;
+}
+
+Expr *eval_func(Expr *func){
+    func->content.fun.body = eval_expr(func->content.fun.body);
+    return func;
 }
 
 Expr *eval_expr(Expr *exp){
@@ -189,6 +181,7 @@ Expr *eval_expr(Expr *exp){
     }
     switch (exp->expr_type) {
     case VAR:
+        return exp;
     case FUN:
         return exp; // we are not able to evaluate a variable or function by itself
     case GRP:
@@ -239,7 +232,7 @@ void get_grp_repr(const Group *grp, char *buff, int brack_count){
 }
 
 
-void _print_expr(const Expr* expr, char *buff, int brack_count){
+void _print_expr(const Expr *expr, char *buff, int brack_count){
     // This is supposed to be the route of the repr functions
     switch (expr->expr_type)
     {
@@ -306,6 +299,18 @@ void more_complex_grp_repr(){
     free(var_x);
 }
 
+void test_inf(){
+    Expr *x = create_var("x");
+    Expr *grp_x = create_grp(x, x);
+    Expr *func_grp_x = create_func(x, grp_x);
+
+    Expr *grp_func_grp_x = create_grp(func_grp_x, func_grp_x);
+    Expr *output = eval_expr(grp_func_grp_x);
+    char local_buff[50] = "";
+    print_expr(output, local_buff);
+    printf("%s\n", local_buff);
+}
+
 int main(){
     // Var test
     Expr *var = create_var("test");
@@ -332,6 +337,7 @@ int main(){
     printf("%s\n", group_buff);
 
     more_complex_grp_repr();
+    test_inf();
 
     free(var);
     free(func);
