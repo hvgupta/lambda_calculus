@@ -224,9 +224,6 @@ Expr const *simplify_expr(Expr const *expr, char cur_dir){ // cur_dir can only b
     } 
     Expr const *lhs = simplify_expr(expr->group.lhs, 'l');
     Expr const *rhs = simplify_expr(expr->group.rhs, 'r');
-    printf("---------------\n");
-    print_expr(lhs);
-    print_expr(rhs);
 
     if (lhs->expr_type == VAR){
         // lhs is var then will be checked in the lower call stack 
