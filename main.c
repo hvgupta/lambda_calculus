@@ -122,6 +122,29 @@ Expr const *const create_grp(Expr const *lhs, Expr const *rhs){
 
     return grp_expr;
 }
+
+Expr const *get_church_numerals(int num){
+    Expr const *var_x = create_var("x");   
+    Expr const *func = create_var("f");
+    Expr const *body = var_x;
+    while (num-- != 0) {
+        body = create_grp(func, body);
+    }
+    return create_func(func, create_func(var_x, body));
+}
+
+Expr const *get_addition_function(){
+    Expr const *var_n = create_var("n");
+    Expr const *var_m = create_var("m");
+    Expr const *func = create_var("f");
+    Expr const *var_x = create_var("x");
+    Expr const *addition = create_func(var_n, create_func(var_m, 
+            create_func(func, create_func(var_x,
+            create_grp(var_m, create_grp(func, create_grp(var_n, create_grp(func, var_x))))))));
+    return addition;
+}
+
+
 void print_expr(const Expr *expr);
 /*
 print_for_var -> string
@@ -155,17 +178,29 @@ Expr const *eval_grp_expr(Expr const *grp_expr){
     Expr const *lhs = grp_expr->group.lhs;
     Expr const *rhs = grp_expr->group.rhs;
 
+    // printf("--------------\n");
+    // print_expr(lhs);
+    // print_expr(rhs);
+
     if (lhs->expr_type == VAR){
         if (rhs->expr_type != GRP){
             return grp_expr; // just to stop from too much mem being allocated
+        }
+
+        Expr const *evalled_rhs = eval_expr(rhs);
+        if (evalled_rhs == rhs){
+            return grp_expr;
         }
         return create_grp(lhs, eval_expr(rhs));
     } else if (lhs->expr_type == FUN){
         Expr const *func_body = lhs->fun.body; 
         Expr const *func_arg = lhs->fun.arg; 
+        printf("goes here\n");
+        print_expr(lhs);
+        print_expr(rhs);
 
         return replace_vars(func_body, func_arg, eval_expr(rhs));
-    } else if (lhs->expr_type == GRP){
+    } else if (lhs->expr_type == GRP){    
         Expr const *new_lhs = eval_grp_expr(lhs);
         Expr const *new_rhs = eval_expr(rhs);
         
@@ -182,6 +217,14 @@ Expr const *eval_grp_expr(Expr const *grp_expr){
 }
 
 Expr const *eval_func(Expr const *func){
+    printf("in the function eval ");
+    print_expr(func);
+    Expr const *evalled_body = eval_expr(func->fun.body);
+    printf("function body after eval ");
+    print_expr(evalled_body);
+    if (evalled_body == func->fun.body){
+        return func;
+    }
     return create_func(func->fun.arg, eval_expr(func->fun.body));
 }
 
@@ -198,6 +241,7 @@ Expr const *eval_expr(Expr const *exp){
         return eval_grp_expr(exp);
     }
 }
+
 
 Expr const *restructed_expr(Expr const *lhs, Expr const *rhs, const char dir){
     if (dir == 'l' && rhs->group.rhs->expr_type == FUN && rhs->group.lhs->expr_type != FUN){
@@ -285,6 +329,23 @@ Expr const *simplify_expr(Expr const *expr, char cur_dir){ // cur_dir can only b
     return NULL;
 }
 
+Expr const *full_eval_expr(Expr const * const expr){
+    Expr const *prev = NULL;
+    Expr const *now = expr;
+    while (1) {
+        now = eval_expr(now);
+        printf("intermediate step\n");
+        print_expr(now);
+        if (prev == now){
+            break;
+        }
+        now = simplify_expr(now, 'r');
+        prev = now;
+    }
+
+    return now;
+}
+
 void _print_expr(Expr const *expr, char *buff, int brack_count);
     
  
@@ -344,13 +405,24 @@ void _print_expr(const Expr *expr, char *buff, int brack_count){
 }
 
 void print_expr(const Expr *expr){
-    char local_buff[50] = "";
+    char local_buff[150] = "";
     _print_expr(expr, local_buff, 0);
     printf("%s\n", local_buff);
 }
 
+void test_nums_and_addition(Expr const *n, Expr const *m){
+    // being able to understand this as it is going to be very difficult
+    Expr const *n_plus_m_expr = create_grp(create_grp(get_addition_function(), n), m);
+    printf("the addition before eval is ");
+    print_expr(n_plus_m_expr);
 
-void more_complex_grp_repr(){
+    Expr const *evalled_sum = full_eval_expr(n_plus_m_expr);
+    printf("the addition after eval is ");
+    print_expr(evalled_sum);
+}
+
+
+void test_complex_grp_repr(){
     /* this function only tests repr, not eval
      *  (λx.(λy.(x y) g))(λx. x x)
     */
@@ -375,13 +447,9 @@ void more_complex_grp_repr(){
     printf("before eval ");
     print_expr(cmplx_grp);
     
-
-    
     Expr const *evalled_expr = eval_expr(cmplx_grp);
     printf("after eval ");
     print_expr(evalled_expr);
-    
-
 }
 
 void test_inf(){
@@ -395,7 +463,7 @@ void test_inf(){
     print_expr(output);
 }
 
-void func_grp_weird_thing(){
+void test_grp_func_eval(){
     Expr const *x = create_var("x");
     Expr const *func_x = create_func(x, x);
     Expr const *grp_x_funcx = create_grp(x, func_x);
@@ -459,10 +527,11 @@ void basic_test(){
 
 int main(){
     basic_test();
-    more_complex_grp_repr();
+    test_complex_grp_repr();
     /* test_inf(); */
-    func_grp_weird_thing();
+    test_grp_func_eval();
     test_restructuring();
+    test_nums_and_addition(get_church_numerals(3), get_church_numerals(5));
 
     free_all();
 };
