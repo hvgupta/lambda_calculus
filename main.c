@@ -170,6 +170,7 @@ Expr const *replace_vars(Expr const *body, const Expr *arg_expr , Expr const *rp
     return NULL;
 }
 
+Expr const *simplify_expr(Expr const *expr, char cur_dir);
 
 Expr const *eval_grp_expr(Expr const *grp_expr){
     if (grp_expr == NULL){
@@ -193,11 +194,11 @@ Expr const *eval_grp_expr(Expr const *grp_expr){
         }
         return create_grp(lhs, eval_expr(rhs));
     } else if (lhs->expr_type == FUN){
+        if (rhs->expr_type == GRP){
+            return simplify_expr(grp_expr, 'r');
+        }
         Expr const *func_body = lhs->fun.body; 
         Expr const *func_arg = lhs->fun.arg; 
-        printf("goes here\n");
-        print_expr(lhs);
-        print_expr(rhs);
 
         return replace_vars(func_body, func_arg, eval_expr(rhs));
     } else if (lhs->expr_type == GRP){    
@@ -217,11 +218,7 @@ Expr const *eval_grp_expr(Expr const *grp_expr){
 }
 
 Expr const *eval_func(Expr const *func){
-    printf("in the function eval ");
-    print_expr(func);
     Expr const *evalled_body = eval_expr(func->fun.body);
-    printf("function body after eval ");
-    print_expr(evalled_body);
     if (evalled_body == func->fun.body){
         return func;
     }
@@ -334,12 +331,9 @@ Expr const *full_eval_expr(Expr const * const expr){
     Expr const *now = expr;
     while (1) {
         now = eval_expr(now);
-        printf("intermediate step\n");
-        print_expr(now);
         if (prev == now){
             break;
         }
-        now = simplify_expr(now, 'r');
         prev = now;
     }
 
@@ -412,6 +406,7 @@ void print_expr(const Expr *expr){
 
 void test_nums_and_addition(Expr const *n, Expr const *m){
     // being able to understand this as it is going to be very difficult
+    printf("=====Addition=====\n");
     Expr const *n_plus_m_expr = create_grp(create_grp(get_addition_function(), n), m);
     printf("the addition before eval is ");
     print_expr(n_plus_m_expr);
