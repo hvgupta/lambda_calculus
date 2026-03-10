@@ -206,9 +206,7 @@ Expr const *eval_grp_expr(Expr const *grp_expr){
         Expr const *new_rhs = eval_expr(rhs);
         
         if (new_lhs->expr_type == GRP && new_rhs->expr_type == GRP){
-            return create_grp(new_lhs->group.lhs, 
-                    eval_expr(create_grp(new_lhs->group.rhs, new_rhs)
-                ));
+            return eval_expr(simplify_expr(create_grp(new_lhs, new_rhs), 'r'));
         }
 
         return create_grp(new_lhs, new_rhs);
