@@ -146,6 +146,7 @@ Expr const *get_addition_function(){
 
 
 void print_expr(const Expr *expr);
+Expr const *simplify_expr(Expr const *expr, char cur_dir);
 /*
 print_for_var -> string
 print_for_func -> f",\{arg}." + if arg-> print_arg, if func print_
@@ -158,19 +159,23 @@ Expr const *replace_vars(Expr const *body, const Expr *arg_expr , Expr const *rp
         return (body == arg_expr) ? rplc_expr : body;
 
     } else if (body->expr_type == FUN){
-        return create_func(body->fun.arg, replace_vars(body->fun.body, arg_expr, rplc_expr));
+        Expr const *replaced_body = replace_vars(body->fun.body, arg_expr, rplc_expr);
+        if (replaced_body == body->fun.body){
+            return body;
+        }
+        return create_func(body->fun.arg, replaced_body);
 
     } else if (body->expr_type == GRP){
-        return eval_expr(create_grp(
-                    replace_vars(body->group.lhs, arg_expr, rplc_expr), 
-                    replace_vars(body->group.rhs, arg_expr, rplc_expr)
-                ));
+        Expr const *replaced_lhs = replace_vars(body->group.lhs, arg_expr, rplc_expr);
+        Expr const *replaced_rhs = replace_vars(body->group.rhs, arg_expr, rplc_expr);
+        if (replaced_lhs == body->group.lhs && replaced_rhs == body->group.rhs){
+            return body;
+        }
+        return eval_expr(simplify_expr(create_grp(replaced_lhs, replaced_rhs), 'r'));
     }
     
     return NULL;
 }
-
-Expr const *simplify_expr(Expr const *expr, char cur_dir);
 
 Expr const *eval_grp_expr(Expr const *grp_expr){
     if (grp_expr == NULL){
