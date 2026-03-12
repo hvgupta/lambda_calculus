@@ -140,13 +140,25 @@ Expr const *get_addition_function(){
     Expr const *var_x = create_var("x");
     Expr const *addition = create_func(var_n, create_func(var_m, 
             create_func(func, create_func(var_x,
-            create_grp(var_m, create_grp(func, create_grp(var_n, create_grp(func, var_x))))))));
+            create_grp(create_grp(var_m, func), create_grp(create_grp(var_n, func), var_x))))));
     return addition;
+}
+
+Expr const *get_multiplication_function(){
+    Expr const *var_n = create_var("n");
+    Expr const *var_m = create_var("m");
+    Expr const *func = create_var("f");
+    Expr const *var_x = create_var("x");
+
+    Expr const *mult = create_func(var_n, create_func(var_m, create_func(func, create_func(var_x, 
+                create_grp(create_grp(var_n, create_grp(var_m, func)), var_x)                   
+            ))));
+
+    return mult;
 }
 
 
 void print_expr(const Expr *expr);
-Expr const *simplify_expr(Expr const *expr, char cur_dir);
 /*
 print_for_var -> string
 print_for_func -> f",\{arg}." + if arg-> print_arg, if func print_
@@ -171,7 +183,7 @@ Expr const *replace_vars(Expr const *body, const Expr *arg_expr , Expr const *rp
         if (replaced_lhs == body->group.lhs && replaced_rhs == body->group.rhs){
             return body;
         }
-        return eval_expr(simplify_expr(create_grp(replaced_lhs, replaced_rhs), 'r'));
+        return create_grp(replaced_lhs, replaced_rhs);
     }
     
     return NULL;
@@ -184,10 +196,6 @@ Expr const *eval_grp_expr(Expr const *grp_expr){
     Expr const *lhs = grp_expr->group.lhs;
     Expr const *rhs = grp_expr->group.rhs;
 
-    // printf("--------------\n");
-    // print_expr(lhs);
-    // print_expr(rhs);
-
     if (lhs->expr_type == VAR){
         if (rhs->expr_type != GRP){
             return grp_expr; // just to stop from too much mem being allocated
@@ -197,11 +205,8 @@ Expr const *eval_grp_expr(Expr const *grp_expr){
         if (evalled_rhs == rhs){
             return grp_expr;
         }
-        return create_grp(lhs, eval_expr(rhs));
+        return create_grp(lhs, evalled_rhs);
     } else if (lhs->expr_type == FUN){
-        if (rhs->expr_type == GRP){
-            return simplify_expr(grp_expr, 'r');
-        }
         Expr const *func_body = lhs->fun.body; 
         Expr const *func_arg = lhs->fun.arg; 
 
@@ -209,9 +214,9 @@ Expr const *eval_grp_expr(Expr const *grp_expr){
     } else if (lhs->expr_type == GRP){    
         Expr const *new_lhs = eval_grp_expr(lhs);
         Expr const *new_rhs = eval_expr(rhs);
-        
-        if (new_lhs->expr_type == GRP && new_rhs->expr_type == GRP){
-            return eval_expr(simplify_expr(create_grp(new_lhs, new_rhs), 'r'));
+
+        if (lhs == new_lhs && rhs == new_rhs){
+            return grp_expr;
         }
 
         return create_grp(new_lhs, new_rhs);
@@ -242,93 +247,6 @@ Expr const *eval_expr(Expr const *exp){
     }
 }
 
-
-Expr const *restructed_expr(Expr const *lhs, Expr const *rhs, const char dir){
-    if (dir == 'l' && rhs->group.rhs->expr_type == FUN && rhs->group.lhs->expr_type != FUN){
-        // ((* *) (x f)) --> (((* *) x) f)
-        return create_grp(create_grp(lhs, rhs->group.lhs), rhs->group.rhs);
-    } else if (dir == 'r' && lhs->group.lhs->expr_type != FUN){
-        // ((x *) (* *)) --> (x (* (* *)))
-        return create_grp(lhs->group.lhs, create_grp(lhs->group.rhs, rhs));
-    }
-    // in the cases where we want to return the current group structure
-    return NULL;
-}
-
-Expr const *simplify_expr(Expr const *expr, char cur_dir){ // cur_dir can only be l or r
-    // the idea of this function is to have function/group be in the lhs and the variables be in the rhs
-    if (expr == NULL){
-        return NULL;
-    }
-    switch (expr->expr_type) {
-        case GRP:
-            break;
-        default:
-            return expr;
-    } 
-    Expr const *lhs = simplify_expr(expr->group.lhs, 'l');
-    Expr const *rhs = simplify_expr(expr->group.rhs, 'r');
-
-    if (lhs->expr_type == VAR){
-        // lhs is var then will be checked in the lower call stack 
-        return expr;
-
-    } else if (lhs->expr_type == FUN){
-        if (rhs->expr_type != GRP){
-            // (f x)
-            return expr;
-        } else if (rhs->group.lhs->expr_type == FUN){
-            // since the func is in the left side of the group, so we dont need to change the group
-            // f (f *)
-            return expr;
-        }
-        // (f (*  *)) --> ((f *) *)
-        return create_grp(create_grp(lhs, rhs->group.lhs), rhs->group.rhs);
-
-    } else if (lhs->expr_type == GRP){
-        if (rhs->expr_type != GRP){
-            if (rhs->expr_type == FUN && cur_dir == 'l'){
-                return expr;
-            }else if (lhs->group.rhs->expr_type != FUN && cur_dir == 'l'){
-                return expr;
-            } 
-            // ((* f) *) --> (* (f *))
-            return create_grp(lhs->group.lhs, create_grp(lhs->group.rhs, rhs));
-        } 
-
-        if (lhs->group.lhs->expr_type == FUN && rhs->group.lhs->expr_type == FUN){
-            // ((f *) (f *))
-            return expr;
-        } else if (lhs->group.rhs->expr_type != FUN){
-            if (cur_dir == 'l' && rhs->group.rhs->expr_type == FUN && rhs->group.lhs->expr_type != FUN){
-            // ((* *) (x f)) --> (((* *) x) f)
-                return create_grp(create_grp(lhs, rhs->group.lhs), rhs->group.rhs);
-            } else if (cur_dir == 'r' && lhs->group.lhs->expr_type != FUN){
-                // ((x *) (* *)) --> (x (* (* *)))
-                return create_grp(lhs->group.lhs, create_grp(lhs->group.rhs, rhs));
-            }
-            return expr;
-        }
-
-        if (cur_dir == 'r' && lhs->group.lhs->expr_type != FUN){
-            return create_grp(
-                    lhs->group.lhs, 
-                    create_grp(create_grp(lhs->group.rhs, rhs->group.lhs), rhs->group.rhs)
-                );
-        } else if (lhs->group.lhs->expr_type == FUN){
-            return create_grp(create_grp(lhs, rhs->group.lhs), rhs->group.rhs);
-        }
-
-        return create_grp(
-                create_grp(lhs->group.lhs, create_grp(lhs->group.rhs, rhs->group.lhs)),
-                rhs->group.rhs
-            );
-        
-    }
-    
-    return NULL;
-}
-
 Expr const *full_eval_expr(Expr const * const expr){
     Expr const *prev = NULL;
     Expr const *now = expr;
@@ -343,68 +261,67 @@ Expr const *full_eval_expr(Expr const * const expr){
     return now;
 }
 
-void _print_expr(Expr const *expr, char *buff, int brack_count);
+void _print_expr(Expr const *expr, int brack_count);
     
  
-void get_var_repr(const char *var, char *buff, int brack_count){
+void get_var_repr(const char *var, int brack_count){
     // actually these function would be an internal function, the main entry point of this function will be from print_expr
-    if (var == NULL || buff == NULL){
+    if (var == NULL){
         return;
     }
-    strcat(buff, var);
+    printf("%s", var);
     
     while (brack_count > 0){
-        strcat(buff, ")");
+        printf(")");
         --brack_count;
     }
         
 }
 
-void get_func_repr(const Func *func, char *buff, int brack_count){
-    if (func == NULL || buff == NULL) {
+void get_func_repr(const Func *func, int brack_count){
+    if (func == NULL) {
         return; 
     }
-    strcat(buff, "λ");
-    _print_expr(func->arg, buff, 0);
-    strcat(buff, ".");
+    printf("λ");
+    _print_expr(func->arg, 0);
+    printf(".");
     if (func->body->expr_type != GRP){
-        strcat(buff, "(");
+        printf("(");
         ++brack_count;
     }
-    _print_expr(func->body, buff, brack_count);
+    _print_expr(func->body, brack_count);
 }
 
-void get_grp_repr(const Group *grp, char *buff, int brack_count){
-    if (grp == NULL || buff == NULL) {
+void get_grp_repr(const Group *grp, int brack_count){
+    if (grp == NULL) {
         return; 
     }
-    strcat(buff, "(");
-    _print_expr(grp->lhs, buff, 0);
-    strcat(buff, " ");
-    _print_expr(grp->rhs, buff, brack_count+1);
+    printf("(");
+    _print_expr(grp->lhs, 0);
+    printf(" ");
+    _print_expr(grp->rhs, brack_count+1);
 }
 
 
-void _print_expr(const Expr *expr, char *buff, int brack_count){
+void _print_expr(const Expr *expr, int brack_count){
     // This is supposed to be the route of the repr functions
     switch (expr->expr_type)
     {
     case VAR:
-        get_var_repr(expr->var, buff, brack_count);
+        get_var_repr(expr->var, brack_count);
         break;
     case FUN:
-        get_func_repr(&expr->fun, buff, brack_count);
+        get_func_repr(&expr->fun, brack_count);
         break;
     case GRP:
-        get_grp_repr(&expr->group, buff, brack_count);
+        get_grp_repr(&expr->group, brack_count);
         break;
     }
 }
 
 void print_expr(const Expr *expr){
-    char local_buff[150] = "";
-    _print_expr(expr, local_buff, 0);
-    printf("%s\n", local_buff);
+    _print_expr(expr,  0);
+    printf("\n");
 }
 
 void test_nums_and_addition(Expr const *n, Expr const *m){
@@ -417,6 +334,16 @@ void test_nums_and_addition(Expr const *n, Expr const *m){
     Expr const *evalled_sum = full_eval_expr(n_plus_m_expr);
     printf("the addition after eval is ");
     print_expr(evalled_sum);
+
+    printf("==== end of addition ======\n");
+
+    Expr const *n_mult_m_expr = create_grp(create_grp(get_multiplication_function(), n), m);
+    printf("multiplication before eval ");
+    print_expr(n_mult_m_expr);
+
+    Expr const *evalled_mult = full_eval_expr(n_mult_m_expr);
+    printf("multiplication after eval ");
+    print_expr(evalled_mult);
 }
 
 
@@ -480,29 +407,29 @@ void test_grp_func_eval(){
     print_expr(evalled_total); 
 }
 
-void test_restructuring(){
-    Expr const *var_x = create_var("x");
-    Expr const *func_x = create_func(var_x, var_x);
+// void test_restructuring(){
+//     Expr const *var_x = create_var("x");
+//     Expr const *func_x = create_func(var_x, var_x);
 
-    Expr const *var_y = create_var("y");
-    Expr const *func_y = create_func(var_y, var_y);
+//     Expr const *var_y = create_var("y");
+//     Expr const *func_y = create_func(var_y, var_y);
 
-    Expr const *var_a = create_var("a");
-    Expr const *var_b = create_var("b");
-    Expr const *var_c = create_var("c");
-    Expr const *var_d = create_var("d");
+//     Expr const *var_a = create_var("a");
+//     Expr const *var_b = create_var("b");
+//     Expr const *var_c = create_var("c");
+//     Expr const *var_d = create_var("d");
 
-    Expr const *unstructured = create_grp(
-            create_grp(var_a, func_x), create_grp(create_grp(var_b, func_y),  var_d)
-            );
-    printf("==== structuring test ====\n");
-    printf("Unstructured ");
-    print_expr(unstructured);
+//     Expr const *unstructured = create_grp(
+//             create_grp(var_a, func_x), create_grp(create_grp(var_b, func_y),  var_d)
+//             );
+//     printf("==== structuring test ====\n");
+//     printf("Unstructured ");
+//     print_expr(unstructured);
 
-    Expr const *structured = simplify_expr(unstructured, 'r');
-    printf("structured ");
-    print_expr(structured);
-}
+//     Expr const *structured = simplify_expr(unstructured, 'r');
+//     printf("structured ");
+//     print_expr(structured);
+// }
 
 void basic_test(){
     // Var test
@@ -528,7 +455,6 @@ int main(){
     test_complex_grp_repr();
     /* test_inf(); */
     test_grp_func_eval();
-    test_restructuring();
     test_nums_and_addition(get_church_numerals(3), get_church_numerals(5));
 
     free_all();
