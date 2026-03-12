@@ -123,6 +123,22 @@ Expr const *const create_grp(Expr const *lhs, Expr const *rhs){
     return grp_expr;
 }
 
+Expr const *TRUE = NULL;
+void _set_TRUE(){
+    Expr const *bool_x = create_var("bool_x");
+    Expr const *bool_y = create_var("bool_y");
+
+    TRUE = create_func(bool_x, create_func(bool_y, bool_x));
+}
+
+Expr const *FALSE = NULL;
+void _set_FALSE(){
+    Expr const *bool_x = create_var("bool_x");
+    Expr const *bool_y = create_var("bool_y");
+    
+    FALSE = create_func(bool_x, create_func(bool_y, bool_y));
+}
+
 Expr const *get_church_numerals(int num){
     Expr const *var_x = create_var("x");   
     Expr const *func = create_var("f");
@@ -157,7 +173,24 @@ Expr const *get_multiplication_function(){
     return mult;
 }
 
+Expr const *y_combinator(){
+    Expr const *var_x = create_var("yx");
+    Expr const *var_f = create_var("yf");
 
+    return create_func(var_f, create_grp(
+                create_func(var_x, create_grp(var_f, create_grp(var_x, var_x))), 
+                create_func(var_x, create_grp(var_f, create_grp(var_x, var_x)))
+            ));
+}
+
+
+// Expr const *get_factorial_expr(Expr const *n){
+//     Expr const *factorial_n = create_var("fn");
+//     Expr const *is_zero = create_grp(factorial_n, create_grp(create_func(create_var(""), FALSE), TRUE));
+//     Expr const *minus_one = NULL;
+//
+//     return create_grp(y_combinator(), const Expr *rhs);
+// }
 void print_expr(const Expr *expr);
 /*
 print_for_var -> string
@@ -324,6 +357,13 @@ void print_expr(const Expr *expr){
     printf("\n");
 }
 
+// void test_minus_one(){
+//     Expr const *minus_one_var = create_var("mov");
+//
+//     Expr const *minus_func_func = create_func(minus_one_var, 
+//             create_grp(create_func(create_var(""), NULL), const Expr *rhs))
+// }
+
 void test_nums_and_addition(Expr const *n, Expr const *m){
     // being able to understand this as it is going to be very difficult
     printf("=====Addition=====\n");
@@ -407,30 +447,6 @@ void test_grp_func_eval(){
     print_expr(evalled_total); 
 }
 
-// void test_restructuring(){
-//     Expr const *var_x = create_var("x");
-//     Expr const *func_x = create_func(var_x, var_x);
-
-//     Expr const *var_y = create_var("y");
-//     Expr const *func_y = create_func(var_y, var_y);
-
-//     Expr const *var_a = create_var("a");
-//     Expr const *var_b = create_var("b");
-//     Expr const *var_c = create_var("c");
-//     Expr const *var_d = create_var("d");
-
-//     Expr const *unstructured = create_grp(
-//             create_grp(var_a, func_x), create_grp(create_grp(var_b, func_y),  var_d)
-//             );
-//     printf("==== structuring test ====\n");
-//     printf("Unstructured ");
-//     print_expr(unstructured);
-
-//     Expr const *structured = simplify_expr(unstructured, 'r');
-//     printf("structured ");
-//     print_expr(structured);
-// }
-
 void basic_test(){
     // Var test
     Expr const *const var = create_var("test");
@@ -450,12 +466,19 @@ void basic_test(){
 
 }
 
-int main(){
+void code_main(){
     basic_test();
     test_complex_grp_repr();
     /* test_inf(); */
     test_grp_func_eval();
     test_nums_and_addition(get_church_numerals(3), get_church_numerals(5));
+}
+
+int main(){
+    _set_TRUE();
+    _set_FALSE();
+
+    code_main();
 
     free_all();
 };
