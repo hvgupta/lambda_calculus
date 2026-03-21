@@ -5,7 +5,6 @@
 struct Expr;
 typedef struct Expr Expr;
 
-
 typedef struct{
     Expr const **list_of_expr;
     int cur_size;
@@ -17,7 +16,7 @@ GC *gc = NULL;
 void insert_into_gc(Expr const *expr){
     if (gc == NULL){
         gc = (GC *)malloc(sizeof(GC));
-        gc->list_of_expr = (Expr const **)malloc(sizeof(Expr const *)*8);
+        gc->list_of_expr = (Expr const **)malloc(sizeof(Expr const *) * 8);
         gc->cur_size = 0;
         gc->size = 8;
     } else if (gc->cur_size == gc->size){
@@ -49,16 +48,17 @@ typedef enum {
     GRP
 } ExprType;
 
-typedef struct
-{
-    Expr const *arg; // do we want to allow for non-var expr? 
+typedef struct {
+    Expr const *arg; // do we want to allow for non-var expr?
     // this can be an easy way to reduce the chances of capture cases, we can just check memory addr
     Expr const *body;
+    const char *alt_repr;
 } Func;
 
 typedef struct {
     Expr const *lhs;
     Expr const *rhs;
+    const char *alt_repr;
 } Group;
 
 struct Expr {
@@ -66,7 +66,7 @@ struct Expr {
     union
     {
         const char *var;
-        Func fun; 
+        Func fun;
         Group group;
     };
 };
@@ -83,7 +83,29 @@ Expr const *const create_var(const char *var){
     insert_into_gc(var_expr);
 
     return var_expr;
-}  
+}
+
+Expr const *const create_func_with_repr(Expr const *arg, Expr const *body, const char *repr){
+    if (arg == NULL || body == NULL){
+        return NULL;
+    }
+
+    if (arg->expr_type != VAR){
+        return NULL;
+    }
+
+    Expr *func_expr = (Expr *)malloc(sizeof(Expr));
+
+    func_expr->expr_type = FUN;
+
+    func_expr->fun.arg = arg;
+    func_expr->fun.body = body;
+    func_expr->fun.alt_repr = repr;
+
+    insert_into_gc(func_expr);
+
+    return func_expr;
+}
 
 Expr const *const create_func(Expr const *arg, Expr const *body){
     if (arg == NULL || body == NULL){
@@ -94,16 +116,35 @@ Expr const *const create_func(Expr const *arg, Expr const *body){
         return NULL;
     }
 
-    Expr *func_expr = (Expr *)malloc(sizeof(Expr)); 
+    Expr *func_expr = (Expr *)malloc(sizeof(Expr));
 
     func_expr->expr_type = FUN;
-    
+
     func_expr->fun.arg = arg;
     func_expr->fun.body = body;
+    func_expr->fun.alt_repr = NULL;
 
     insert_into_gc(func_expr);
 
     return func_expr;
+}
+
+Expr const *const create_grp_with_repr(Expr const *lhs, Expr const *rhs, const char *repr){
+    if (lhs == NULL || rhs == NULL){
+        return NULL;
+    }
+
+    Expr *grp_expr = (Expr *)malloc(sizeof(Expr));
+
+    grp_expr->expr_type = GRP;
+
+    grp_expr->group.lhs = lhs;
+    grp_expr->group.rhs = rhs;
+    grp_expr->group.alt_repr = repr;
+
+    insert_into_gc(grp_expr);
+
+    return grp_expr;
 }
 
 Expr const *const create_grp(Expr const *lhs, Expr const *rhs){
@@ -117,6 +158,7 @@ Expr const *const create_grp(Expr const *lhs, Expr const *rhs){
 
     grp_expr->group.lhs = lhs;
     grp_expr->group.rhs = rhs;
+    grp_expr->group.alt_repr = NULL;
 
     insert_into_gc(grp_expr);
 
@@ -140,10 +182,11 @@ void _set_FALSE(){
 }
 
 Expr const *get_church_numerals(int num){
-    Expr const *var_x = create_var("x");   
+    Expr const *var_x = create_var("x");
     Expr const *func = create_var("f");
     Expr const *body = var_x;
-    while (num-- != 0) {
+
+    while (num-- != 0){
         body = create_grp(func, body);
     }
     return create_func(func, create_func(var_x, body));
@@ -154,9 +197,22 @@ Expr const *get_addition_function(){
     Expr const *var_m = create_var("m");
     Expr const *func = create_var("f");
     Expr const *var_x = create_var("x");
-    Expr const *addition = create_func(var_n, create_func(var_m, 
-            create_func(func, create_func(var_x,
-            create_grp(create_grp(var_m, func), create_grp(create_grp(var_n, func), var_x))))));
+    Expr const *addition = create_func(
+        var_n,
+        create_func(
+            var_m,
+            create_func(
+                func, 
+                create_func(
+                    var_x,
+                    create_grp(
+                        create_grp(var_m, func), 
+                        create_grp(create_grp(var_n, func), var_x)
+                    )
+                )
+            )
+        )
+    );
     return addition;
 }
 
@@ -166,31 +222,67 @@ Expr const *get_multiplication_function(){
     Expr const *func = create_var("f");
     Expr const *var_x = create_var("x");
 
-    Expr const *mult = create_func(var_n, create_func(var_m, create_func(func, create_func(var_x, 
-                create_grp(create_grp(var_n, create_grp(var_m, func)), var_x)                   
-            ))));
+    Expr const *mult = create_func(
+        var_n, 
+        create_func(
+            var_m, 
+            create_func(
+                func, 
+                create_func(
+                    var_x,
+                    create_grp(
+                        create_grp(var_n, create_grp(var_m, func)), 
+                        var_x
+                    )
+                )
+            )
+        )
+    );
 
     return mult;
 }
 
-Expr const *y_combinator(){
-    Expr const *var_x = create_var("yx");
-    Expr const *var_f = create_var("yf");
+Expr const *get_minus_one(){
+    Expr const *var_n = create_var("n");
+    Expr const *var_f = create_var("f");
+    Expr const *var_x = create_var("x");
 
-    return create_func(var_f, create_grp(
-                create_func(var_x, create_grp(var_f, create_grp(var_x, var_x))), 
-                create_func(var_x, create_grp(var_f, create_grp(var_x, var_x)))
-            ));
+    Expr const *var_g = create_var("g");
+    Expr const *var_h = create_var("h");
+    Expr const *gh_function = create_func(var_g, create_func(var_h, create_grp(var_h, create_grp(var_g, var_f))));
+
+    Expr const *var_u = create_var("u");
+    Expr const *func_ux = create_func(var_u, var_x);
+
+    Expr const *another_u = create_var("u");
+    Expr const *func_uu = create_func(another_u, another_u);
+
+    Expr const *inner_func = create_grp(create_grp(create_grp(var_n, gh_function), func_ux), func_uu);
+
+    return create_func(var_n, create_func(var_f, create_func(var_x, inner_func)));
 }
 
+Expr const *y_combinator(){
+    Expr const *yy = create_var("yy");
+    Expr const *yx = create_var("yx");
 
-// Expr const *get_factorial_expr(Expr const *n){
-//     Expr const *factorial_n = create_var("fn");
-//     Expr const *is_zero = create_grp(factorial_n, create_grp(create_func(create_var(""), FALSE), TRUE));
-//     Expr const *minus_one = NULL;
-//
-//     return create_grp(y_combinator(), const Expr *rhs);
-// }
+    Expr const *U = create_func(
+        yx,
+        create_func(
+            yy,
+            create_grp(
+                yy,
+                create_grp(
+                    create_grp(yx, yx),
+                    yy
+                )
+            )
+        )
+    );
+
+    return create_grp(U, U);
+}
+
 void print_expr(const Expr *expr);
 /*
 print_for_var -> string
@@ -198,12 +290,15 @@ print_for_func -> f",\{arg}." + if arg-> print_arg, if func print_
 */
 Expr const *eval_expr(Expr const *exp);
 
-Expr const *replace_vars(Expr const *body, const Expr *arg_expr , Expr const *rplc_expr){
-    
+Expr const *replace_vars(Expr const *body, const Expr *arg_expr, Expr const *rplc_expr){
+
     if (body->expr_type == VAR){
         return (body == arg_expr) ? rplc_expr : body;
 
     } else if (body->expr_type == FUN){
+        if (body->fun.arg == arg_expr){
+            return body;
+        }
         Expr const *replaced_body = replace_vars(body->fun.body, arg_expr, rplc_expr);
         if (replaced_body == body->fun.body){
             return body;
@@ -218,7 +313,7 @@ Expr const *replace_vars(Expr const *body, const Expr *arg_expr , Expr const *rp
         }
         return create_grp(replaced_lhs, replaced_rhs);
     }
-    
+
     return NULL;
 }
 
@@ -240,19 +335,19 @@ Expr const *eval_grp_expr(Expr const *grp_expr){
         }
         return create_grp(lhs, evalled_rhs);
     } else if (lhs->expr_type == FUN){
-        Expr const *func_body = lhs->fun.body; 
+        Expr const *func_body = eval_expr(lhs->fun.body); 
         Expr const *func_arg = lhs->fun.arg; 
 
         return replace_vars(func_body, func_arg, eval_expr(rhs));
     } else if (lhs->expr_type == GRP){    
         Expr const *new_lhs = eval_grp_expr(lhs);
-        Expr const *new_rhs = eval_expr(rhs);
+        // Expr const *new_rhs = eval_expr(rhs);
 
-        if (lhs == new_lhs && rhs == new_rhs){
+        if (lhs == new_lhs){
             return grp_expr;
         }
 
-        return create_grp(new_lhs, new_rhs);
+        return create_grp(new_lhs, rhs);
     }
     
     return NULL;
@@ -274,7 +369,7 @@ Expr const *eval_expr(Expr const *exp){
     case VAR:
         return exp;
     case FUN:
-        return eval_func(exp); 
+        return eval_func(exp);
     case GRP:
         return eval_grp_expr(exp);
     }
@@ -284,6 +379,8 @@ Expr const *full_eval_expr(Expr const * const expr){
     Expr const *prev = NULL;
     Expr const *now = expr;
     while (1) {
+        // print_expr(now);
+        // printf("\n");
         now = eval_expr(now);
         if (prev == now){
             break;
@@ -295,8 +392,33 @@ Expr const *full_eval_expr(Expr const * const expr){
 }
 
 void _print_expr(Expr const *expr, int brack_count);
-    
- 
+
+Expr const *is_zero_op(){
+    Expr const *is_zero_n = create_var("izn");
+    Expr const *is_zero = create_func(is_zero_n, create_grp(create_grp(is_zero_n, create_func(create_var(""), FALSE)), TRUE));
+
+    return is_zero;
+}
+
+Expr const *get_factorial_op(){
+    Expr const *factorial_f = create_var("ff");
+    Expr const *factorial_n = create_var("fn");
+
+    Expr const *factorial_body = \
+        create_grp(
+            create_grp(
+                create_grp(is_zero_op(), factorial_n),
+                get_church_numerals(1)),
+            create_grp(
+                create_grp(get_multiplication_function(), factorial_n),
+                create_grp(factorial_f, create_grp(get_minus_one(), factorial_n))
+            )
+        );
+
+    Expr const *F = create_func(factorial_f, create_func(factorial_n, factorial_body));
+    return create_grp(F, create_grp(y_combinator(), F));
+}
+
 void get_var_repr(const char *var, int brack_count){
     // actually these function would be an internal function, the main entry point of this function will be from print_expr
     if (var == NULL){
@@ -308,7 +430,6 @@ void get_var_repr(const char *var, int brack_count){
         printf(")");
         --brack_count;
     }
-        
 }
 
 void get_func_repr(const Func *func, int brack_count){
@@ -332,7 +453,7 @@ void get_grp_repr(const Group *grp, int brack_count){
     printf("(");
     _print_expr(grp->lhs, 0);
     printf(" ");
-    _print_expr(grp->rhs, brack_count+1);
+    _print_expr(grp->rhs, brack_count + 1);
 }
 
 
@@ -360,12 +481,37 @@ void print_expr(const Expr *expr){
 // void test_minus_one(){
 //     Expr const *minus_one_var = create_var("mov");
 //
-//     Expr const *minus_func_func = create_func(minus_one_var, 
+//     Expr const *minus_func_func = create_func(minus_one_var,
 //             create_grp(create_func(create_var(""), NULL), const Expr *rhs))
 // }
 
+void factorial_test(){
+
+    printf("checking is_zero\n");
+    printf("validating that zero is returned as True for 0: ");
+    Expr const *zero = get_church_numerals(0);
+    Expr const *zero_is_zero = full_eval_expr(create_grp(is_zero_op(), zero));
+    print_expr(zero_is_zero);
+
+    printf("validating that non-zero is returned as False for non-zero: ");
+    Expr const *four = get_church_numerals(4);
+    Expr const *four_is_zero = full_eval_expr(create_grp(is_zero_op(), four));
+    print_expr(four_is_zero);
+
+    printf("the factorial op is ");
+    Expr const *factorial_op = get_factorial_op();
+    print_expr(factorial_op);
+
+    printf("factorial of n is ");
+    Expr const *m_minus_one_factorial = full_eval_expr(create_grp(factorial_op, four));
+    print_expr(m_minus_one_factorial);
+}
+
 void test_nums_and_addition(Expr const *n, Expr const *m){
     // being able to understand this as it is going to be very difficult
+    printf("this is the start of the mathematical operations section where n and m will be presented");
+    print_expr(n);
+    print_expr(m);
     printf("=====Addition=====\n");
     Expr const *n_plus_m_expr = create_grp(create_grp(get_addition_function(), n), m);
     printf("the addition before eval is ");
@@ -377,6 +523,7 @@ void test_nums_and_addition(Expr const *n, Expr const *m){
 
     printf("==== end of addition ======\n");
 
+    printf("====Multiplication===========\n");
     Expr const *n_mult_m_expr = create_grp(create_grp(get_multiplication_function(), n), m);
     printf("multiplication before eval ");
     print_expr(n_mult_m_expr);
@@ -384,16 +531,28 @@ void test_nums_and_addition(Expr const *n, Expr const *m){
     Expr const *evalled_mult = full_eval_expr(n_mult_m_expr);
     printf("multiplication after eval ");
     print_expr(evalled_mult);
-}
+    printf("==== end of Multiplication =====\n");
 
+    printf("printing out minus one\n");
+    Expr const *minus_one = get_minus_one();
+    print_expr(minus_one);
+
+    printf("Minus one of n ");
+    Expr const *n_minus_one = full_eval_expr(create_grp(minus_one, n));
+    print_expr(n_minus_one);
+
+    printf("Minus one of m ");
+    Expr const *m_minus_one = full_eval_expr(create_grp(minus_one, m));
+    print_expr(m_minus_one);
+}
 
 void test_complex_grp_repr(){
     /* this function only tests repr, not eval
      *  (λx.(λy.(x y) g))(λx. x x)
-    */
+     */
     Expr const *const var_x = create_var("x");
     Expr const *const var_y = create_var("y");
-    
+
     Expr const *const func_y_body_lhs_grp = create_grp(var_x, var_y);
     Expr const *const var_g = create_var("g");
 
@@ -411,8 +570,8 @@ void test_complex_grp_repr(){
 
     printf("before eval ");
     print_expr(cmplx_grp);
-    
-    Expr const *evalled_expr = eval_expr(cmplx_grp);
+
+    Expr const *evalled_expr = full_eval_expr(cmplx_grp);
     printf("after eval ");
     print_expr(evalled_expr);
 }
@@ -424,7 +583,7 @@ void test_inf(){
 
     Expr const *const grp_func_grp_x = create_grp(func_grp_x, func_grp_x);
     Expr const *const output = eval_expr(grp_func_grp_x);
-    
+
     print_expr(output);
 }
 
@@ -440,18 +599,17 @@ void test_grp_func_eval(){
 
     printf("before ");
     print_expr(total);
-    
 
     Expr const *evalled_total = eval_expr(total);
     printf("after ");
-    print_expr(evalled_total); 
+    print_expr(evalled_total);
 }
 
 void basic_test(){
     // Var test
     Expr const *const var = create_var("test");
     print_expr(var);
-    
+
     // Func test
     Expr const *const func = create_func(var, var);
     print_expr(func);
@@ -460,10 +618,9 @@ void basic_test(){
     Expr const *const nested_func = create_func(var, func);
     print_expr(nested_func);
 
-    //Group
+    // Group
     Expr const *const group_expr = create_grp(nested_func, var);
     print_expr(group_expr);
-
 }
 
 void code_main(){
@@ -472,9 +629,11 @@ void code_main(){
     /* test_inf(); */
     test_grp_func_eval();
     test_nums_and_addition(get_church_numerals(3), get_church_numerals(5));
+    factorial_test();
 }
 
-int main(){
+int main()
+{
     _set_TRUE();
     _set_FALSE();
 
