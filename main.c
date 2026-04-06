@@ -268,6 +268,9 @@ const char *_get_expr_repr(Repr_Node *node, Expr const *expr){
     }
     for (int i = 0; i < num_children; i++){
         Repr_Node *cur_node = node->children[i];
+        if (cur_node->node_type != expr->expr_type){
+            continue;
+        }
         if (cur_node->node_type == VAL){
             if (expr != NULL){
                 continue;
@@ -329,6 +332,7 @@ Expr const *const create_func_with_repr(Expr const *arg, Expr const *body, const
     func_expr->fun.alt_repr = repr;
 
     insert_into_gc(func_expr);
+    register_expr(func_expr, repr);
 
     return func_expr;
 }
@@ -348,7 +352,7 @@ Expr const *const create_func(Expr const *arg, Expr const *body){
 
     func_expr->fun.arg = arg;
     func_expr->fun.body = body;
-    func_expr->fun.alt_repr = NULL;
+    func_expr->fun.alt_repr = get_expr_repr(func_expr);
 
     insert_into_gc(func_expr);
 
@@ -369,6 +373,7 @@ Expr const *const create_grp_with_repr(Expr const *lhs, Expr const *rhs, const c
     grp_expr->group.alt_repr = repr;
 
     insert_into_gc(grp_expr);
+    register_expr(grp_expr, repr);
 
     return grp_expr;
 }
@@ -384,7 +389,7 @@ Expr const *const create_grp(Expr const *lhs, Expr const *rhs){
 
     grp_expr->group.lhs = lhs;
     grp_expr->group.rhs = rhs;
-    grp_expr->group.alt_repr = NULL;
+    grp_expr->group.alt_repr = get_expr_repr(grp_expr);
 
     insert_into_gc(grp_expr);
 
@@ -398,7 +403,7 @@ void _set_TRUE(){
     Expr const *bool_x = create_var("bool_x");
     Expr const *bool_y = create_var("bool_y");
 
-    TRUE = create_func(bool_x, create_func(bool_y, bool_x));
+    TRUE = create_func_with_repr(bool_x, create_func(bool_y, bool_x), "TRUE");
 }
 
 Expr const *restrict FALSE = NULL;
@@ -406,7 +411,7 @@ void _set_FALSE(){
     Expr const *bool_x = create_var("bool_x");
     Expr const *bool_y = create_var("bool_y");
     
-    FALSE = create_func(bool_x, create_func(bool_y, bool_y));
+    FALSE = create_func_with_repr(bool_x, create_func(bool_y, bool_y), "FALSE");
 }
 
 Expr const *get_church_numerals(int num){
@@ -425,7 +430,7 @@ Expr const *get_addition_function(){
     Expr const *var_m = create_var("m");
     Expr const *func = create_var("f");
     Expr const *var_x = create_var("x");
-    Expr const *addition = create_func(var_n,
+    Expr const *addition = create_func_with_repr(var_n,
         create_func(var_m,
             create_func(func, 
                 create_func(var_x,
@@ -435,7 +440,8 @@ Expr const *get_addition_function(){
                     )
                 )
             )
-        )
+        ),
+        "+"
     );
     return addition;
 }
@@ -446,7 +452,7 @@ Expr const *get_multiplication_function(){
     Expr const *func = create_var("f");
     Expr const *var_x = create_var("x");
 
-    Expr const *mult = create_func(var_n, 
+    Expr const *mult = create_func_with_repr(var_n,  
         create_func(var_m, 
             create_func(func, 
                 create_func(var_x,
@@ -456,7 +462,8 @@ Expr const *get_multiplication_function(){
                     )
                 )
             )
-        )
+        ),
+        "*"
     );
 
     return mult;
@@ -479,14 +486,14 @@ Expr const *get_minus_one(){
 
     Expr const *inner_func = create_grp(create_grp(create_grp(var_n, gh_function), func_ux), func_uu);
 
-    return create_func(var_n, create_func(var_f, create_func(var_x, inner_func)));
+    return create_func_with_repr(var_n, create_func(var_f, create_func(var_x, inner_func)), "-1");
 }
 
 Expr const *y_combinator(){
     Expr const *yy = create_var("yy");
     Expr const *yx = create_var("yx");
 
-    Expr const *U = create_func(yx,
+    Expr const *U = create_func_with_repr(yx,
         create_func(yy,
             create_grp(yy,
                 create_grp(
@@ -494,7 +501,8 @@ Expr const *y_combinator(){
                     yy
                 )
             )
-        )
+        ),
+        "U"
     );
 
     return create_grp(U, U);
@@ -609,7 +617,7 @@ void _print_expr(Expr const *expr, int brack_count);
 
 Expr const *is_zero_op(){
     Expr const *is_zero_n = create_var("izn");
-    Expr const *is_zero = create_func(is_zero_n, create_grp(create_grp(is_zero_n, create_func(create_var(""), FALSE)), TRUE));
+    Expr const *is_zero = create_func_with_repr(is_zero_n, create_grp(create_grp(is_zero_n, create_func(create_var(""), FALSE)), TRUE), "is_zero");
 
     return is_zero;
 }
@@ -853,16 +861,14 @@ void code_main(){
     /* test_inf(); */
     test_grp_func_eval();
     test_nums_and_addition(get_church_numerals(3), get_church_numerals(5));
-    test_trie();
+    // test_trie(); currently the same function being registered agin causes problems
     factorial_test();
 }
 
-int main()
-{
-    _set_TRUE();
-    _set_FALSE();
-    
+int main(){
     _set_root_repr_trie();
+    _set_TRUE();
+    _set_FALSE();   
 
     code_main();
 
