@@ -2,9 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-struct Expr;
 typedef struct Expr Expr;
-
 typedef struct{
     Expr const **list_of_expr;
     int cur_size;
@@ -43,10 +41,14 @@ void free_all(){
 
 
 typedef enum {
+    ROOT,
     VAR,
     FUN,
-    GRP
-} ExprType;
+    GRP,
+    VAL
+} Expr_Type;
+
+/* =========== Start of Expression Definition ============ */
 
 typedef struct {
     Expr const *arg; // do we want to allow for non-var expr?
@@ -62,7 +64,7 @@ typedef struct {
 } Group;
 
 struct Expr {
-    ExprType expr_type;
+    Expr_Type expr_type;
     union
     {
         const char *var;
@@ -70,6 +72,230 @@ struct Expr {
         Group group;
     };
 };
+
+/* ============= Start of the Trie Definition ================ */
+
+typedef struct Repr_Node Repr_Node;
+
+struct Repr_Node{
+    // When valid
+    const char *equiv_repr;
+    
+    // Identifying
+    Expr_Type node_type;
+    
+    Repr_Node **children;
+    int next_child_idx;
+    int num_children;
+};
+/* ----------- Start of Trie Implementation ------------------- */
+
+Repr_Node *trie_root = NULL;
+void _set_root_repr_trie(){
+    if (trie_root != NULL){
+        return;
+    }
+
+    trie_root = (Repr_Node *)malloc(sizeof(Repr_Node));
+    trie_root->equiv_repr = NULL;
+
+    trie_root->node_type = ROOT;
+
+    trie_root->children = (Repr_Node **)malloc(sizeof(Repr_Node *) * 2);
+    trie_root->next_child_idx = 0; 
+    trie_root->num_children = 2;
+}
+
+Repr_Node *create_empty_node(){
+    Repr_Node *node = (Repr_Node *)malloc(sizeof(Repr_Node));
+    
+    node->equiv_repr = NULL;
+    node->node_type = VAR;
+    node->children = NULL;
+    node->next_child_idx = 0;
+    node->num_children = 0;
+
+    return node;
+}
+
+void _free_expr_trie(Repr_Node *node){
+    if (node->children != NULL){
+        for (int child_idx = 0; child_idx < node->next_child_idx; ++child_idx){
+            _free_expr_trie(node->children[child_idx]);
+        }
+        free(node->children);
+    }
+    
+    free(node);
+    node = NULL;
+}
+
+void add_child_to_parent(Repr_Node *parent_node, Repr_Node *cur_node){
+    if (parent_node->num_children == 0){
+        parent_node->children = (Repr_Node **)malloc(sizeof(Repr_Node *));
+        trie_root->num_children = 1;
+    } else if (parent_node->next_child_idx == parent_node->num_children){
+        parent_node->children = \
+            (Repr_Node **)realloc((void *)parent_node->children, parent_node->num_children*2*sizeof(Repr_Node *));
+        parent_node->num_children *= 2;
+    }
+    parent_node->children[parent_node->next_child_idx++] = cur_node;
+}
+
+Repr_Node *_create_expr_node(Expr const *expr, char const *expr_name);
+
+Repr_Node *_create_var_node(Expr const *var_expr, char const *expr_name){
+    Repr_Node *var_node = create_empty_node(); 
+    var_node->node_type = VAR;
+    var_node->equiv_repr = var_expr->var;
+    
+    if (expr_name != NULL){
+        Repr_Node *repr_node = create_empty_node();
+        var_node->node_type = VAL;
+        var_node->equiv_repr = expr_name;
+        add_child_to_parent(var_node, repr_node);
+    }
+    
+    return var_node;
+}
+
+Repr_Node *_create_func_node(Expr const *fun_expr, char const *expr_name){
+    Repr_Node *fun_node = create_empty_node();
+    fun_node->node_type = FUN;
+    fun_node->equiv_repr = fun_expr->fun.arg->var;
+
+    Repr_Node *func_body = _create_expr_node(fun_expr->fun.body, expr_name);
+    add_child_to_parent(fun_node, func_body);
+
+    return fun_node;
+}
+
+Repr_Node *get_deepest_node(Repr_Node *node){
+    if (node->num_children > 0){
+        return get_deepest_node(node->children[0]);
+    }
+    return node;
+}
+
+Repr_Node *_create_grp_node(Expr const *grp_expr, char const *expr_name){
+    Repr_Node *grp_node = create_empty_node();
+    grp_node->node_type = GRP;
+    
+    Repr_Node *left_tree = _create_expr_node(grp_expr->group.lhs, NULL);
+    Repr_Node *right_tree = _create_expr_node(grp_expr->group.rhs, expr_name);
+    Repr_Node *left_tree_lowest = get_deepest_node(left_tree);
+    add_child_to_parent(left_tree_lowest, right_tree);
+    
+    add_child_to_parent(grp_node, left_tree);
+
+    return grp_node;
+}
+
+Repr_Node *_create_expr_node(Expr const *expr, char const *expr_name){
+    switch (expr->expr_type) {
+        case VAR:
+            return _create_var_node(expr, expr_name);
+        case FUN:
+            return _create_func_node(expr, expr_name);
+        case GRP:
+            return _create_grp_node(expr, expr_name);
+        default:
+            return NULL;
+    } 
+}
+
+Repr_Node *_register_expr(Repr_Node *parent_node, Expr const *expr, char const *expr_name){
+    int num_children = (parent_node == NULL) ? 0 : parent_node->next_child_idx; 
+    for (int i = 0; i < num_children; i++){
+        if (parent_node->children[i]->node_type != expr->expr_type){
+            continue;
+        }
+        Repr_Node *cur_node = parent_node->children[i]; 
+        if (cur_node->node_type == GRP){
+            Repr_Node *left_side = _register_expr(cur_node, expr->group.lhs, NULL);
+            return _register_expr(left_side, expr->group.rhs, expr_name);
+        } else if (cur_node->node_type == FUN){
+            if (cur_node->equiv_repr != expr->fun.arg->var){
+                continue;
+            }
+            return _register_expr(cur_node, expr->fun.body, expr_name);
+        } else if (cur_node->equiv_repr == expr->var){
+            return cur_node;
+        }
+    }
+    Repr_Node *created_node = _create_expr_node(expr, expr_name); 
+    add_child_to_parent(parent_node, created_node);
+    return get_deepest_node(created_node);
+}
+
+void register_expr(Expr const *expr, char const *expr_name){
+    _register_expr(trie_root, expr, expr_name);
+}
+
+Repr_Node *get_latest_lowest_node_expr(Repr_Node *node, Expr const *expr){
+    if (node == NULL){
+        return NULL;
+    }
+    int num_children = node->next_child_idx;
+    if (num_children == 0){
+        return NULL;
+    }   
+    for (int i = 0; i < num_children; i++){
+        Repr_Node *cur_node = node->children[i];
+        if (cur_node->node_type == VAR){
+            if (cur_node->equiv_repr != expr->var){
+                continue;
+            }
+            return cur_node;
+        } else if (cur_node->node_type == FUN){
+            if (cur_node->equiv_repr != expr->fun.arg->var){
+                continue;
+            }
+            return get_latest_lowest_node_expr(cur_node, expr->fun.body);
+        } else if (cur_node->node_type == GRP){
+            Repr_Node *left_bottom = get_latest_lowest_node_expr(cur_node, expr->group.lhs);
+            return get_latest_lowest_node_expr(left_bottom, expr->group.rhs);
+        }
+    }
+
+    return NULL;
+}
+
+char check_for_expr(Repr_Node *node, Expr const *expr){
+    int num_children = node->next_child_idx;
+    if (num_children == 0){
+        return 'F';
+    }
+    for (int i = 0; i < num_children; i++){
+        Repr_Node *cur_node = node->children[i];
+        if (cur_node->node_type == VAL){
+            if (expr != NULL){
+                continue;
+            }
+            return 'T';
+        } else if (cur_node->node_type == VAR){
+            if (cur_node->equiv_repr != expr->var){
+                continue;
+            }
+            return check_for_expr(cur_node, NULL);
+        } else if (cur_node->node_type == FUN){
+            if (cur_node->equiv_repr != expr->fun.arg->var){
+                continue;
+            }
+            return check_for_expr(cur_node, expr->fun.body);
+        } else {
+            char left_output = check_for_expr(cur_node, expr->group.lhs);
+            if (left_output == 'F'){
+                return 'F';
+            }
+            return check_for_expr(get_latest_lowest_node_expr(cur_node, expr->group.lhs), expr->group.rhs);
+        }
+    }
+    return 'F';
+}
+
+/* ---------- End of Trie Implementation --------------- */
+/* ---------- Start of Expression Implementation ------- */
 
 Expr const *const create_var(const char *var){
     if (var == NULL){
@@ -165,6 +391,8 @@ Expr const *const create_grp(Expr const *lhs, Expr const *rhs){
     return grp_expr;
 }
 
+/* ---- End of the Expression Implementation ---- */
+
 Expr const *TRUE = NULL;
 void _set_TRUE(){
     Expr const *bool_x = create_var("bool_x");
@@ -197,14 +425,10 @@ Expr const *get_addition_function(){
     Expr const *var_m = create_var("m");
     Expr const *func = create_var("f");
     Expr const *var_x = create_var("x");
-    Expr const *addition = create_func(
-        var_n,
-        create_func(
-            var_m,
-            create_func(
-                func, 
-                create_func(
-                    var_x,
+    Expr const *addition = create_func(var_n,
+        create_func(var_m,
+            create_func(func, 
+                create_func(var_x,
                     create_grp(
                         create_grp(var_m, func), 
                         create_grp(create_grp(var_n, func), var_x)
@@ -222,14 +446,10 @@ Expr const *get_multiplication_function(){
     Expr const *func = create_var("f");
     Expr const *var_x = create_var("x");
 
-    Expr const *mult = create_func(
-        var_n, 
-        create_func(
-            var_m, 
-            create_func(
-                func, 
-                create_func(
-                    var_x,
+    Expr const *mult = create_func(var_n, 
+        create_func(var_m, 
+            create_func(func, 
+                create_func(var_x,
                     create_grp(
                         create_grp(var_n, create_grp(var_m, func)), 
                         var_x
@@ -266,12 +486,9 @@ Expr const *y_combinator(){
     Expr const *yy = create_var("yy");
     Expr const *yx = create_var("yx");
 
-    Expr const *U = create_func(
-        yx,
-        create_func(
-            yy,
-            create_grp(
-                yy,
+    Expr const *U = create_func(yx,
+        create_func(yy,
+            create_grp(yy,
                 create_grp(
                     create_grp(yx, yx),
                     yy
@@ -284,10 +501,7 @@ Expr const *y_combinator(){
 }
 
 void print_expr(const Expr *expr);
-/*
-print_for_var -> string
-print_for_func -> f",\{arg}." + if arg-> print_arg, if func print_
-*/
+
 Expr const *eval_expr(Expr const *exp);
 
 Expr const *replace_vars(Expr const *body, const Expr *arg_expr, Expr const *rplc_expr){
@@ -372,6 +586,8 @@ Expr const *eval_expr(Expr const *exp){
         return eval_func(exp);
     case GRP:
         return eval_grp_expr(exp);
+    default:
+        return NULL; // this is never executed
     }
 }
 
@@ -379,8 +595,6 @@ Expr const *full_eval_expr(Expr const * const expr){
     Expr const *prev = NULL;
     Expr const *now = expr;
     while (1) {
-        // print_expr(now);
-        // printf("\n");
         now = eval_expr(now);
         if (prev == now){
             break;
@@ -470,6 +684,8 @@ void _print_expr(const Expr *expr, int brack_count){
     case GRP:
         get_grp_repr(&expr->group, brack_count);
         break;
+    default:
+        break;
     }
 }
 
@@ -477,13 +693,6 @@ void print_expr(const Expr *expr){
     _print_expr(expr,  0);
     printf("\n");
 }
-
-// void test_minus_one(){
-//     Expr const *minus_one_var = create_var("mov");
-//
-//     Expr const *minus_func_func = create_func(minus_one_var,
-//             create_grp(create_func(create_var(""), NULL), const Expr *rhs))
-// }
 
 void factorial_test(){
 
@@ -636,8 +845,11 @@ int main()
 {
     _set_TRUE();
     _set_FALSE();
+    
+    _set_root_repr_trie();
 
     code_main();
 
+    _free_expr_trie(trie_root); 
     free_all();
 };
