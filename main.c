@@ -78,6 +78,8 @@ struct Expr {
 typedef struct Repr_Node Repr_Node;
 
 struct Repr_Node{
+    short next_child_idx;
+    short num_children;
     // When valid
     const char *equiv_repr;
     
@@ -85,9 +87,7 @@ struct Repr_Node{
     Expr_Type node_type;
     
     Repr_Node **children;
-    int next_child_idx;
-    int num_children;
-};
+    };
 /* ----------- Start of Trie Implementation ------------------- */
 
 Repr_Node *trie_root = NULL;
@@ -443,6 +443,8 @@ Expr const *get_addition_function(){
         ),
         "+"
     );
+
+    // m.f.x.
     return addition;
 }
 
